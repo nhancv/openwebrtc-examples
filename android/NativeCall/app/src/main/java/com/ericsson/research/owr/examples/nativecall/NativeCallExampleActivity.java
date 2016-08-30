@@ -25,10 +25,13 @@
 
 package com.ericsson.research.owr.examples.nativecall;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.support.v4.app.ActivityCompat;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.TextureView;
@@ -60,9 +63,6 @@ import com.ericsson.research.owr.sdk.VideoView;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-
 public class NativeCallExampleActivity extends Activity implements
         SignalingChannel.JoinListener,
         SignalingChannel.DisconnectListener,
@@ -76,6 +76,7 @@ public class NativeCallExampleActivity extends Activity implements
     private static final String PREFERENCE_KEY_SERVER_URL = "url";
     private static final int SETTINGS_ANIMATION_DURATION = 400;
     private static final int SETTINGS_ANIMATION_ANGLE = 90;
+    private static final int REQUEST_CAMERA = 0x01;
 
     /**
      * Initialize OpenWebRTC at startup
@@ -115,6 +116,45 @@ public class NativeCallExampleActivity extends Activity implements
 
         mWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         mRtcConfig = RtcConfigs.defaultConfig(Config.STUN_SERVER);
+        checkCameraPermission();
+    }
+
+    /**
+     * Method to check permission
+     */
+    void checkCameraPermission() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+            // Camera permission has not been granted.
+            requestCameraPermission();
+        }
+    }
+
+    /**
+     * Method to request permission for camera
+     */
+    private void requestCameraPermission() {
+        // Camera permission has not been granted yet. Request it directly.
+        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA},
+                REQUEST_CAMERA);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == REQUEST_CAMERA) {
+            // BEGIN_INCLUDE(permission_result)
+            // Received permission result for camera permission.
+            Log.i(TAG, "Received response for Camera permission request.");
+
+            // Check if the only required permission has been granted
+            if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Camera permission has been granted, preview can be displayed
+            } else {
+                //Permission not granted
+                Toast.makeText(NativeCallExampleActivity.this, "You need to grant camera permission to use camera", Toast.LENGTH_LONG).show();
+            }
+
+        }
     }
 
     @Override
@@ -134,7 +174,7 @@ public class NativeCallExampleActivity extends Activity implements
                 Log.d(TAG, "setting self-view: " + selfView);
                 mSelfView.setView(selfView);
                 mRemoteView.setView(remoteView);
-    //            mStreamSet.setDeviceOrientation(mWindowManager.getDefaultDisplay().getRotation());
+                //            mStreamSet.setDeviceOrientation(mWindowManager.getDefaultDisplay().getRotation());
             } else {
                 Log.d(TAG, "stopping self-view");
                 mSelfView.stop();
@@ -205,7 +245,7 @@ public class NativeCallExampleActivity extends Activity implements
         mAudioCheckBox.setEnabled(false);
         mVideoCheckBox.setEnabled(false);
 
-        mSignalingChannel = new SignalingChannel(getUrl(), sessionId);
+        mSignalingChannel = new SignalingChannel(NativeCallExampleActivity.this, getUrl(), sessionId);
         mSignalingChannel.setJoinListener(this);
         mSignalingChannel.setDisconnectListener(this);
         mSignalingChannel.setSessionFullListener(this);
@@ -328,8 +368,10 @@ public class NativeCallExampleActivity extends Activity implements
         Toast.makeText(this, "Disconnected from server", Toast.LENGTH_LONG).show();
         updateVideoView(false);
         mStreamSet = null;
-        mRtcSession.stop();
-        mRtcSession = null;
+        if(mRtcSession!=null){
+            mRtcSession.stop();
+            mRtcSession = null;
+        }
         mSignalingChannel = null;
     }
 

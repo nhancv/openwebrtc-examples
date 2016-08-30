@@ -25,35 +25,43 @@
 
 package com.ericsson.research.owr.examples.nativecall;
 
+import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.ByteArrayEntity;
-import org.apache.http.impl.client.DefaultHttpClient;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.lang.StringBuilder;
+import java.io.OutputStream;
 import java.math.BigInteger;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.security.KeyStore;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManagerFactory;
+
+
 public class SignalingChannel {
     public static final String TAG = "EventSource";
 
-    private final HttpClient mHttpSendClient = new DefaultHttpClient();
+//    private final HttpClient mHttpSendClient = new DefaultHttpClient();
     private final Handler mMainHandler;
     private final String mClientToServerUrl;
     private final String mServerToClientUrl;
@@ -63,8 +71,10 @@ public class SignalingChannel {
     private JoinListener mJoinListener;
     private DisconnectListener mDisconnectListener;
     private SessionFullListener mSessionFullListener;
+    private Context context;
 
-    public SignalingChannel(String baseUrl, String session) {
+    public SignalingChannel(Context context, String baseUrl, String session) {
+        this.context = context;
         String userId = new BigInteger(40, new Random()).toString(32);
         mServerToClientUrl = baseUrl + "/stoc/" + session + "/" + userId;
         mClientToServerUrl = baseUrl + "/ctos/" + session + "/" + userId;
@@ -84,22 +94,56 @@ public class SignalingChannel {
         }
     }
 
+    public HttpsURLConnection setUpHttpsConnection(String urlString) {
+        try {
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            InputStream caInput = new BufferedInputStream(context.getAssets().open("cert.cer"));
+            Certificate ca = cf.generateCertificate(caInput);
+
+            // Create a KeyStore containing our trusted CAs
+            String keyStoreType = KeyStore.getDefaultType();
+            KeyStore keyStore = KeyStore.getInstance(keyStoreType);
+            keyStore.load(null, null);
+            keyStore.setCertificateEntry("ca", ca);
+
+            // Create a TrustManager that trusts the CAs in our KeyStore
+            String tmfAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmfAlgorithm);
+            tmf.init(keyStore);
+
+            // Create an SSLContext that uses our TrustManager
+            SSLContext context = SSLContext.getInstance("TLS");
+            context.init(null, tmf.getTrustManagers(), null);
+
+            // Tell the URLConnection to use a SocketFactory from our SSLContext
+            HostnameVerifier hostnameVerifier = new HostnameVerifier() {
+                @Override
+                public boolean verify(String hostname, SSLSession session) {
+                    HostnameVerifier hv =
+                            HttpsURLConnection.getDefaultHostnameVerifier();
+                    return hv.verify("tamphan", session);
+                }
+            };
+
+            URL url = new URL(urlString);
+            HttpsURLConnection urlConnection = (HttpsURLConnection) url.openConnection();
+            urlConnection.setSSLSocketFactory(context.getSocketFactory());
+            urlConnection.setHostnameVerifier(hostnameVerifier);
+            return urlConnection;
+        } catch (Exception ex) {
+            Log.e(TAG, "Failed to establish SSL connection to server: " + ex.toString());
+            return null;
+        }
+    }
+
     private void open() {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                HttpClient httpClient = new DefaultHttpClient();
-                HttpGet httpGet = new HttpGet(mServerToClientUrl);
-
                 try {
-                    HttpResponse httpResponse = httpClient.execute(httpGet);
-                    HttpEntity httpEntity = httpResponse.getEntity();
-
-                    if (httpEntity != null) {
-                        mEventStream = httpEntity.getContent();
-                        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(mEventStream));
-                        readEventStream(bufferedReader);
-                    }
+                    mEventStream = setUpHttpsConnection(mServerToClientUrl).getInputStream();
+                    BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(mEventStream));
+                    readEventStream(bufferedReader);
                 } catch (IOException exception) {
                     Log.e(TAG, "SSE: " + exception);
                     exception.printStackTrace();
@@ -243,12 +287,24 @@ public class SignalingChannel {
             mSendHandler.post(new Runnable() {
                 @Override
                 public void run() {
-                    HttpPost httpPost = new HttpPost(mClientToServerUrl + "/" + mPeerId);
+                    HttpURLConnection urlConnection = setUpHttpsConnection(mClientToServerUrl + "/" + mPeerId);
                     try {
-                        httpPost.setEntity(new ByteArrayEntity(message.toString().getBytes("UTF8")));
-                        mHttpSendClient.execute(httpPost);
+                        urlConnection.setRequestMethod("POST");
+                        urlConnection.setRequestProperty("Content-Type",
+                                "application/json");
+                        urlConnection.setRequestProperty("Content-Language", "en-US");
+                        urlConnection.setUseCaches (false);
+                        urlConnection.setDoOutput(true);
+                        urlConnection.setChunkedStreamingMode(0);
+                        OutputStream out = new BufferedOutputStream(urlConnection.getOutputStream());
+                        out.write(message.toString().getBytes("UTF8"));
+                        out.flush ();
+                        out.close ();
                     } catch (IOException exception) {
+                        exception.printStackTrace();
                         Log.e(TAG, "failed to send message to " + mPeerId + ": " + exception.toString());
+                    } finally {
+                        urlConnection.disconnect();
                     }
                 }
             });
