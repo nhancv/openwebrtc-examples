@@ -8,6 +8,28 @@ This repo contains client examples showing how to use OpenWebRTC as well as simp
 
 **Contents**
 
+STUN SERVER
+
+Some stun server you can use:
+```
+stun.l.google.com:19302
+stun1.l.google.com:19302
+stun2.l.google.com:19302
+stun3.l.google.com:19302
+stun4.l.google.com:19302
+stun.ekiga.net
+stun.ideasip.com
+stun.iptel.org
+stun.rixtelecom.se
+stun.schlund.de
+stunserver.org
+stun.softjoys.com
+stun.voiparound.com
+stun.voipbuster.com
+stun.voipstunt.com
+stun.bcs2005.net
+```
+
 Android
 * Native - Uses the C API to show a self-view video. Video is rendered using OpenGL.
 * NativeCall - Fully native app that connects to [http://demo.openwebrtc.org](http://demo.openwebrtc.org).
