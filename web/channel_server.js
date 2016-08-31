@@ -4,7 +4,7 @@ var https = require("https");
 var path = require("path");
 
 var sessions = {};
-var usersInSessionLimit = 2;
+var usersInSessionLimit = 20;
 
 var port = process.env.PORT || 8080;
 var httpsPort = process.env.HTTPS_PORT || 8443;
