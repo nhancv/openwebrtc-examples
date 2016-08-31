@@ -174,3 +174,6 @@ OS X
 
 web
 * `channel_server.js` - Node.js based server and web application used for [http://demo.openwebrtc.org](http://demo.openwebrtc.org)
+* Note run server: fix web sdp (replace file sdp.js from openwebrtc\bridge\client\sdp.js https://github.com/nhancv/ot-openwebrtc)
+* Generate self-signed certificated: selfsignedcertificate.com
+Run: node channel_server.js 1234 4321 cert/nhancao.key cert/nhancao.cert
