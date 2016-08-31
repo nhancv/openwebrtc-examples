@@ -289,17 +289,20 @@ public class SignalingChannel {
                 public void run() {
                     HttpURLConnection urlConnection = setUpHttpsConnection(mClientToServerUrl + "/" + mPeerId);
                     try {
+                        urlConnection.setReadTimeout( 10000 /*milliseconds*/ );
+                        urlConnection.setConnectTimeout( 15000 /* milliseconds */ );
                         urlConnection.setRequestMethod("POST");
-                        urlConnection.setRequestProperty("Content-Type",
-                                "application/json");
-                        urlConnection.setRequestProperty("Content-Language", "en-US");
-                        urlConnection.setUseCaches (false);
+                        urlConnection.setDoInput(true);
                         urlConnection.setDoOutput(true);
-                        urlConnection.setChunkedStreamingMode(0);
-                        OutputStream out = new BufferedOutputStream(urlConnection.getOutputStream());
-                        out.write(message.toString().getBytes("UTF8"));
-                        out.flush ();
-                        out.close ();
+                        urlConnection.setFixedLengthStreamingMode(message.toString().getBytes().length);
+                        urlConnection.setRequestProperty("Content-Type", "text/plain; charset=UTF-8");
+                        urlConnection.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+                        urlConnection.connect();
+                        OutputStream os = new BufferedOutputStream(urlConnection.getOutputStream());
+                        os.write(message.toString().getBytes("UTF-8"));
+                        //clean up
+                        os.flush();
+                        os.close();
                     } catch (IOException exception) {
                         exception.printStackTrace();
                         Log.e(TAG, "failed to send message to " + mPeerId + ": " + exception.toString());
