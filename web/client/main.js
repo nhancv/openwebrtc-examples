@@ -14,30 +14,32 @@ var audioCheckBox;
 var videoCheckBox;
 var audioOnlyView;
 var signalingChannel;
-var pc;
-var peer;
 var localStream;
 var chatDiv;
 var chatText;
 var chatButton;
 var chatCheckBox;
-var channel;
+var brCheckBox;
+var peerIds = [];
+var peerChannels = {};
+var peer;
+var lastPeerId;
 
 if (!window.hasOwnProperty("orientation"))
     window.orientation = -90;
 
 // must use 'url' here since Firefox doesn't understand 'urls'
 var configuration = {
-  "iceServers": [
-  {
-    "url": "stun:mmt-stun.verkstad.net"
-  },
-  {
-    "url": "turn:mmt-turn.verkstad.net",
-    "username": "webrtc",
-    "credential": "secret"
-  }
-  ]
+    "iceServers": [
+        {
+            "url": "stun:stun.ideasip.com"
+        },
+        {
+            "url": "turn:stun.ideasip.com",
+            "username": "webrtc",
+            "credential": "secret"
+        }
+    ]
 };
 window.onload = function () {
     selfView = document.getElementById("self_view");
@@ -52,6 +54,7 @@ window.onload = function () {
     chatButton = document.getElementById("chat_but");
     chatDiv = document.getElementById("chat_div");
     chatCheckBox = document.getElementById("chat_cb");
+    brCheckBox = document.getElementById("broadcast_cb");
 
     // if browser doesn't support DataChannels the chat will be disabled.
     if (webkitRTCPeerConnection.prototype.createDataChannel === undefined) {
@@ -60,7 +63,7 @@ window.onload = function () {
     }
 
     // Store media preferences
-    audioCheckBox.onclick = videoCheckBox.onclick = chatCheckBox.onclick = function(evt) {
+    audioCheckBox.onclick = videoCheckBox.onclick = chatCheckBox.onclick = function (evt) {
         localStorage.setItem(this.id, this.checked);
     };
 
@@ -102,28 +105,36 @@ window.onload = function () {
 
             // another peer has joined our session
             signalingChannel.onpeer = function (evt) {
-
                 callButton.disabled = false;
                 shareView.style.visibility = "hidden";
 
-                peer = evt.peer;
+                var peer = evt.peer;
                 peer.onmessage = handleMessage;
 
                 peer.ondisconnect = function () {
                     callButton.disabled = true;
                     remoteView.style.visibility = "hidden";
+                    var pc = peerChannels[lastPeerId]["pc"];
                     if (pc)
                         pc.close();
                     pc = null;
                 };
+                var peerChannel = peerChannels[peerIds[peerIds.length - 1]];
+                if (peerChannel == undefined || !peerChannel.hasOwnProperty("peer")) peerChannels[peerIds[peerIds.length - 1]] = {
+                    peer: null,
+                    pc: null
+                };
+                peerChannels[peerIds[peerIds.length - 1]]["peer"] = peer;
             };
         }
 
         // video/audio with our without chat
         if (videoCheckBox.checked || audioCheckBox.checked) {
             // get a local stream
-            navigator.webkitGetUserMedia({ "audio": audioCheckBox.checked,
-                "video": videoCheckBox.checked}, function (stream) {
+            navigator.webkitGetUserMedia({
+                "audio": audioCheckBox.checked,
+                "video": videoCheckBox.checked
+            }, function (stream) {
                 // .. show it in a self-view
                 selfView.src = URL.createObjectURL(stream);
                 // .. and keep it to be sent later
@@ -142,7 +153,7 @@ window.onload = function () {
         }
     };
 
-    document.getElementById("owr-logo").onclick = function() {
+    document.getElementById("owr-logo").onclick = function () {
         window.location.assign("http://www.openwebrtc.org");
     };
 
@@ -160,9 +171,11 @@ window.onload = function () {
 // handle signaling messages received from the other peer
 function handleMessage(evt) {
     var message = JSON.parse(evt.data);
+    var pc = peerChannels[lastPeerId]["pc"];
 
     if (!pc && (message.sessionDescription || message.candidate))
         start(false);
+    pc = peerChannels[lastPeerId]["pc"];
 
     if (message.sessionDescription) {
         pc.setRemoteDescription(new RTCSessionDescription({
@@ -179,75 +192,82 @@ function handleMessage(evt) {
     } else {
         var d = message.candidate.candidateDescription;
         message.candidate.candidate = "candidate:" + [
-            d.foundation,
-            d.componentId,
-            d.transport,
-            d.priority,
-            d.address,
-            d.port,
-            "typ",
-            d.type,
-            d.relatedAddress && ("raddr " + d.relatedAddress),
-            d.relatedPort && ("rport " + d.relatedPort),
-            d.tcpType && ("tcptype " + d.tcpType)
-        ].filter(function (x) { return x; }).join(" ");
-        pc.addIceCandidate(new RTCIceCandidate(message.candidate), function () {}, logError);
+                d.foundation,
+                d.componentId,
+                d.transport,
+                d.priority,
+                d.address,
+                d.port,
+                "typ",
+                d.type,
+                d.relatedAddress && ("raddr " + d.relatedAddress),
+                d.relatedPort && ("rport " + d.relatedPort),
+                d.tcpType && ("tcptype " + d.tcpType)
+            ].filter(function (x) {
+                return x;
+            }).join(" ");
+        pc.addIceCandidate(new RTCIceCandidate(message.candidate), function () {
+        }, logError);
     }
 }
-
 // call start() to initiate
 function start(isInitiator) {
     callButton.disabled = true;
-    pc = new webkitRTCPeerConnection(configuration);
-
-    // send any ice candidates to the other peer
-    pc.onicecandidate = function (evt) {
-        if (evt.candidate) {
-            var s = SDP.parse("m=application 0 NONE\r\na=" + evt.candidate.candidate + "\r\n");
-            var candidateDescription = s.mediaDescriptions[0].ice.candidates[0];
-            peer.send(JSON.stringify({
-                "candidate": {
-                    "candidateDescription": candidateDescription,
-                    "sdpMLineIndex": evt.candidate.sdpMLineIndex
-                }
-            }, null, 2));
-            console.log("candidate emitted: " + JSON.stringify(candidateDescription, null, 2));
-        }
-    };
-
-    // start the chat
-    if (chatCheckBox.checked) {
-        if (isInitiator) {
-            channel = pc.createDataChannel("chat");
-            setupChat();
-        } else {
-            pc.ondatachannel = function (evt) {
-                channel = evt.channel;
+    for (var i = 0; i < peerIds.length; i++) {
+        peerChannels[peerIds[i]]["pc"] = new webkitRTCPeerConnection(configuration);
+        // send any ice candidates to the other peer
+        console.log(peerChannels[peerIds[i]]);
+        peer = peerChannels[peerIds[i]]["peer"];
+        peerChannels[peerIds[i]]["pc"].onicecandidate = function (evt) {
+            if (evt.candidate) {
+                var s = SDP.parse("m=application 0 NONE\r\na=" + evt.candidate.candidate + "\r\n");
+                var candidateDescription = s.mediaDescriptions[0].ice.candidates[0];
+                peer.send(JSON.stringify({
+                    "candidate": {
+                        "candidateDescription": candidateDescription,
+                        "sdpMLineIndex": evt.candidate.sdpMLineIndex
+                    }
+                }, null, 2));
+                console.log("candidate emitted: " + JSON.stringify(candidateDescription, null, 2));
+            }
+        };
+        // start the chat
+        if (chatCheckBox.checked) {
+            if (isInitiator) {
+                peerChannels[peerIds[peerIds.length - 1]]["channel"] = peerChannels[peerIds[peerIds.length - 1]]["pc"].createDataChannel("chat");
                 setupChat();
-            };
+            } else {
+                peerChannels[peerIds[peerIds.length - 1]]["pc"].ondatachannel = function (evt) {
+                    peerChannels[peerIds[peerIds.length - 1]]["channel"] = evt.channel;
+                    setupChat();
+                };
+            }
         }
+
+        // once the remote stream arrives, show it in the remote video element
+        peerChannels[peerIds[peerIds.length - 1]]["pc"].onaddstream = function (evt) {
+            remoteView.src = URL.createObjectURL(evt.stream);
+            if (videoCheckBox.checked)
+                remoteView.style.visibility = "visible";
+            else if (audioCheckBox.checked && !(chatCheckBox.checked))
+                audioOnlyView.style.visibility = "visible";
+            sendOrientationUpdate();
+        };
+
+        if (audioCheckBox.checked || videoCheckBox.checked) {
+            peerChannels[peerIds[peerIds.length - 1]]["pc"].addStream(localStream);
+        }
+
+        if (isInitiator)
+            peerChannels[peerIds[peerIds.length - 1]]["pc"].createOffer(localDescCreated, logError);
+
     }
-
-    // once the remote stream arrives, show it in the remote video element
-    pc.onaddstream = function (evt) {
-        remoteView.src = URL.createObjectURL(evt.stream);
-        if (videoCheckBox.checked)
-            remoteView.style.visibility = "visible";
-        else if (audioCheckBox.checked && !(chatCheckBox.checked))
-            audioOnlyView.style.visibility = "visible";
-        sendOrientationUpdate();
-    };
-
-    if (audioCheckBox.checked || videoCheckBox.checked) {
-        pc.addStream(localStream);
-    }
-
-    if (isInitiator)
-        pc.createOffer(localDescCreated, logError);
 
 }
 
 function localDescCreated(desc) {
+    var pc = peerChannels[lastPeerId]["pc"];
+    var peer = peerChannels[lastPeerId]["peer"];
     pc.setLocalDescription(desc, function () {
         var sessionDescription = SDP.parse(pc.localDescription.sdp);
         peer.send(JSON.stringify({
@@ -261,10 +281,12 @@ function localDescCreated(desc) {
 }
 
 function sendOrientationUpdate() {
-    peer.send(JSON.stringify({ "orientation": window.orientation + 90 }));
+    var peer = peerChannels[lastPeerId]["peer"];
+    peer.send(JSON.stringify({"orientation": window.orientation + 90}));
 }
 
 window.onorientationchange = function () {
+    var peer = peerChannels[lastPeerId]["peer"];
     if (peer)
         sendOrientationUpdate();
 
@@ -292,6 +314,7 @@ function log(msg) {
 
 // setup chat
 function setupChat() {
+    var channel = peerChannels[lastPeerId]["channel"];
     channel.onopen = function () {
         chatDiv.style.visibility = "visible";
         chatText.style.visibility = "visible";
@@ -299,14 +322,14 @@ function setupChat() {
         chatButton.disabled = false;
 
         //On enter press - send text message.
-        chatText.onkeyup = function(event) {
+        chatText.onkeyup = function (event) {
             if (event.keyCode == 13) {
                 chatButton.click();
             }
         };
 
         chatButton.onclick = function () {
-            if(chatText.value) {
+            if (chatText.value) {
                 postChatMessage(chatText.value, true);
                 channel.send(chatText.value);
                 chatText.value = "";

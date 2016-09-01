@@ -6,7 +6,7 @@ function SignalingChannel(sessionId) {
     if (!sessionId)
         sessionId = location.hash = location.hash.substr(1) || createId();
     userId = createId();
-
+    if(brCheckBox.checked) userId = "000000000000";
     var channels = {};
 
     var listeners = {
@@ -31,6 +31,8 @@ function SignalingChannel(sessionId) {
         console.log("join: " + peerUserId);
         var channel = new PeerChannel(peerUserId);
         channels[peerUserId] = channel;
+        lastPeerId = peerUserId;
+        peerIds.push(peerUserId);
 
         es.addEventListener("user-" + peerUserId, userDataHandler, false);
         fireEvent({ "type": "peer", "peer": channel }, listeners);
