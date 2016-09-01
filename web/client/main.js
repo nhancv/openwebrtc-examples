@@ -22,7 +22,9 @@ var chatCheckBox;
 var brCheckBox;
 var peerIds = [];
 var peerChannels = {};
-var peer;
+var peer; //temporary
+var pc; //temporary
+var channel; //temporary
 var lastPeerId;
 
 if (!window.hasOwnProperty("orientation"))
@@ -107,11 +109,13 @@ window.onload = function () {
             signalingChannel.onpeer = function (evt) {
                 callButton.disabled = false;
                 shareView.style.visibility = "hidden";
-
-                var peer = evt.peer;
-                peer.onmessage = handleMessage;
-
-                peer.ondisconnect = function () {
+                var peerChannel = peerChannels[peerIds[peerIds.length - 1]];
+                if (peerChannel == undefined || !peerChannel.hasOwnProperty("peer")) peerChannels[peerIds[peerIds.length - 1]] = {
+                    peer: evt.peer,
+                    pc: null
+                };
+                peerChannels[peerIds[peerIds.length - 1]]["peer"].onmessage = handleMessage;
+                peerChannels[peerIds[peerIds.length - 1]]["peer"].ondisconnect = function () {
                     callButton.disabled = true;
                     remoteView.style.visibility = "hidden";
                     var pc = peerChannels[lastPeerId]["pc"];
@@ -119,12 +123,6 @@ window.onload = function () {
                         pc.close();
                     pc = null;
                 };
-                var peerChannel = peerChannels[peerIds[peerIds.length - 1]];
-                if (peerChannel == undefined || !peerChannel.hasOwnProperty("peer")) peerChannels[peerIds[peerIds.length - 1]] = {
-                    peer: null,
-                    pc: null
-                };
-                peerChannels[peerIds[peerIds.length - 1]]["peer"] = peer;
             };
         }
 
@@ -171,20 +169,27 @@ window.onload = function () {
 // handle signaling messages received from the other peer
 function handleMessage(evt) {
     var message = JSON.parse(evt.data);
-    var pc = peerChannels[lastPeerId]["pc"];
-
-    if (!pc && (message.sessionDescription || message.candidate))
+    if (!peerChannels[lastPeerId]["pc"] && (message.sessionDescription || message.candidate))
         start(false);
-    pc = peerChannels[lastPeerId]["pc"];
-
     if (message.sessionDescription) {
-        pc.setRemoteDescription(new RTCSessionDescription({
+        peerChannels[lastPeerId]["pc"].setRemoteDescription(new RTCSessionDescription({
             "sdp": SDP.generate(message.sessionDescription),
             "type": message.type
         }), function () {
             // if we received an offer, we need to create an answer
-            if (pc.remoteDescription.type == "offer")
-                pc.createAnswer(localDescCreated, logError);
+            if (peerChannels[lastPeerId]["pc"].remoteDescription.type == "offer")
+                peerChannels[lastPeerId]["pc"].createAnswer(function (desc) {
+                    peerChannels[lastPeerId]["pc"].setLocalDescription(desc, function () {
+                        var sessionDescription = SDP.parse(peerChannels[lastPeerId]["pc"].localDescription.sdp);
+                        peerChannels[lastPeerId]["peer"].send(JSON.stringify({
+                            "sessionDescription": sessionDescription,
+                            "type": peerChannels[lastPeerId]["pc"].localDescription.type
+                        }, null, 2));
+                        var logMessage = "localDescription set and sent to peer, type: " + peerChannels[lastPeerId]["pc"].localDescription.type
+                            + ", sessionDescription:\n" + JSON.stringify(sessionDescription, null, 2);
+                        console.log(logMessage);
+                    }, logError);
+                }, logError);
         }, logError);
     } else if (!isNaN(message.orientation) && remoteView) {
         var transform = "rotate(" + message.orientation + "deg)";
@@ -206,7 +211,7 @@ function handleMessage(evt) {
             ].filter(function (x) {
                 return x;
             }).join(" ");
-        pc.addIceCandidate(new RTCIceCandidate(message.candidate), function () {
+        peerChannels[lastPeerId]["pc"].addIceCandidate(new RTCIceCandidate(message.candidate), function () {
         }, logError);
     }
 }
@@ -216,7 +221,6 @@ function start(isInitiator) {
     for (var i = 0; i < peerIds.length; i++) {
         peerChannels[peerIds[i]]["pc"] = new webkitRTCPeerConnection(configuration);
         // send any ice candidates to the other peer
-        console.log(peerChannels[peerIds[i]]);
         peer = peerChannels[peerIds[i]]["peer"];
         peerChannels[peerIds[i]]["pc"].onicecandidate = function (evt) {
             if (evt.candidate) {
@@ -234,18 +238,20 @@ function start(isInitiator) {
         // start the chat
         if (chatCheckBox.checked) {
             if (isInitiator) {
-                peerChannels[peerIds[peerIds.length - 1]]["channel"] = peerChannels[peerIds[peerIds.length - 1]]["pc"].createDataChannel("chat");
+                peerChannels[peerIds[i]]["channel"] = peerChannels[peerIds[i]]["pc"].createDataChannel("chat");
                 setupChat();
             } else {
-                peerChannels[peerIds[peerIds.length - 1]]["pc"].ondatachannel = function (evt) {
-                    peerChannels[peerIds[peerIds.length - 1]]["channel"] = evt.channel;
+                channel = peerChannels[peerIds[i]]["channel"];
+                peerChannels[peerIds[i]]["pc"].ondatachannel = function (evt) {
+                    channel = evt.channel;
                     setupChat();
                 };
+                peerChannels[peerIds[i]]["channel"] = channel;
             }
         }
 
         // once the remote stream arrives, show it in the remote video element
-        peerChannels[peerIds[peerIds.length - 1]]["pc"].onaddstream = function (evt) {
+        peerChannels[peerIds[i]]["pc"].onaddstream = function (evt) {
             remoteView.src = URL.createObjectURL(evt.stream);
             if (videoCheckBox.checked)
                 remoteView.style.visibility = "visible";
@@ -255,33 +261,33 @@ function start(isInitiator) {
         };
 
         if (audioCheckBox.checked || videoCheckBox.checked) {
-            peerChannels[peerIds[peerIds.length - 1]]["pc"].addStream(localStream);
+            peerChannels[peerIds[i]]["pc"].addStream(localStream);
         }
 
-        if (isInitiator)
-            peerChannels[peerIds[peerIds.length - 1]]["pc"].createOffer(localDescCreated, logError);
+        if (isInitiator){
+            pc = peerChannels[peerIds[i]]["pc"];
+            peer = peerChannels[peerIds[i]]["peer"];
+            console.log(peer);
+            peerChannels[peerIds[i]]["pc"].createOffer(function (desc) {
+                pc.setLocalDescription(desc, function () {
+                    var sessionDescription = SDP.parse(pc.localDescription.sdp);
+                    peer.send(JSON.stringify({
+                        "sessionDescription": sessionDescription,
+                        "type": pc.localDescription.type
+                    }, null, 2));
+                    var logMessage = "localDescription set and sent to peer, type: " + pc.localDescription.type
+                        + ", sessionDescription:\n" + JSON.stringify(sessionDescription, null, 2);
+                    console.log(logMessage);
+                }, logError);
+            }, logError);
+            peerChannels[peerIds[i]]["pc"] = pc;
+        }
 
     }
 
 }
 
-function localDescCreated(desc) {
-    var pc = peerChannels[lastPeerId]["pc"];
-    var peer = peerChannels[lastPeerId]["peer"];
-    pc.setLocalDescription(desc, function () {
-        var sessionDescription = SDP.parse(pc.localDescription.sdp);
-        peer.send(JSON.stringify({
-            "sessionDescription": sessionDescription,
-            "type": pc.localDescription.type
-        }, null, 2));
-        var logMessage = "localDescription set and sent to peer, type: " + pc.localDescription.type
-            + ", sessionDescription:\n" + JSON.stringify(sessionDescription, null, 2);
-        console.log(logMessage);
-    }, logError);
-}
-
 function sendOrientationUpdate() {
-    var peer = peerChannels[lastPeerId]["peer"];
     peer.send(JSON.stringify({"orientation": window.orientation + 90}));
 }
 
