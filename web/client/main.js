@@ -21,6 +21,8 @@ var chatButton;
 var chatCheckBox;
 var broadcastCheckBox;
 var conferenceCheckBox;
+var conferenceContainer;
+var videoConferenceSize = 300;
 var callMode; //0: p2p, 1: broadcast, 2: conference
 var peerIds = [];
 var peerChannels = {};
@@ -62,6 +64,7 @@ window.onload = function () {
     chatCheckBox = document.getElementById("chat_cb");
     broadcastCheckBox = document.getElementById("broadcast_cb");
     conferenceCheckBox = document.getElementById("conference_cb");
+    conferenceContainer = document.getElementById("conference-container");
 
     // if browser doesn't support DataChannels the chat will be disabled.
     if (webkitRTCPeerConnection.prototype.createDataChannel === undefined) {
@@ -100,35 +103,13 @@ window.onload = function () {
             };
         } else if (conferenceCheckBox.checked) {
             callMode = 2;
+            remoteView.style.display = "none";
+            conferenceContainer.style.display = "block";
         }
 
-        broadcastCheckBox.disable = conferenceCheckBox.disable = audioCheckBox.disabled = videoCheckBox.disabled = chatCheckBox.disabled = joinButton.disabled = true;
-
+        broadcastCheckBox.disabled = conferenceCheckBox.disabled = audioCheckBox.disabled = videoCheckBox.disabled = chatCheckBox.disabled = joinButton.disabled = true;
         // only chat
         if (!(videoCheckBox.checked || audioCheckBox.checked)) peerJoin();
-
-        function peerJoin() {
-            var sessionId = document.getElementById("session_txt").value;
-            signalingChannel = new SignalingChannel(sessionId);
-
-            // show and update share link
-            var link = document.getElementById("share_link");
-            var maybeAddHash = window.location.href.indexOf('#') !== -1 ? "" : ("#" + sessionId);
-            link.href = link.textContent = window.location.href + maybeAddHash;
-            shareView.style.visibility = "visible";
-
-            callButton.onclick = function () {
-                start(true);
-            };
-
-            // another peer has joined our session
-            signalingChannel.onpeer = function (evt) {
-                if (callMode == 0 || (callMode == 1 && peerIds[broadCastId] != -1)) {
-                    callButton.disabled = false;
-                }
-                shareView.style.visibility = "hidden";
-            };
-        }
 
         // video/audio with our without chat
         if (videoCheckBox.checked || audioCheckBox.checked) {
@@ -152,6 +133,34 @@ window.onload = function () {
                 peerJoin();
             }, logError);
         }
+
+        if (callMode == 2) {
+            start(false);
+        }
+
+        function peerJoin() {
+            var sessionId = document.getElementById("session_txt").value;
+            signalingChannel = new SignalingChannel(sessionId);
+
+            // show and update share link
+            var link = document.getElementById("share_link");
+            var maybeAddHash = window.location.href.indexOf('#') !== -1 ? "" : ("#" + sessionId);
+            link.href = link.textContent = window.location.href + maybeAddHash;
+            shareView.style.visibility = "visible";
+
+            callButton.onclick = function () {
+                start(true);
+            };
+
+            // another peer has joined our session
+            signalingChannel.onpeer = function (evt) {
+                if (callMode != 1 || (callMode == 1 && peerIds[broadCastId] != -1)) {
+                    callButton.disabled = false;
+                }
+                shareView.style.visibility = "hidden";
+            };
+        }
+
     };
 
     document.getElementById("owr-logo").onclick = function () {
@@ -169,24 +178,48 @@ window.onload = function () {
     }
 };
 
+function createVideoElement(id) {
+    var div = document.createElement("div");
+    var att = document.createAttribute("style");
+    att.value = "display:inline-block;width:300px;background: white;";
+    div.setAttributeNode(att);
+
+    var video = document.createElement("video");
+    video.autoplay = true;
+    video.height = videoConferenceSize;
+    video.width = videoConferenceSize;
+    att = document.createAttribute("id");
+    att.value = id;
+    video.setAttributeNode(att);
+    div.appendChild(video);
+
+    var title = document.createElement("span");
+    title.innerHTML = id;
+    div.appendChild(title);
+
+    conferenceContainer.appendChild(div);
+    return video;
+}
+
 // call start() to initiate
 function start(isInitiator) {
     callButton.disabled = true;
-    if (callMode == 1) {
+    if (callMode == 1 || callMode == 2) {
         for (var i = 0; i < peerIds.length; i++) {
-            createPeerConnection(isInitiator, peerChannels[peerIds[i]]);
+            createPeerConnection(isInitiator, peerIds[i]);
         }
     } else if (callMode == 0) {
         if (peerIds.indexOf(broadCastId) == -1) {
-            createPeerConnection(isInitiator, peerChannels[activePeerId]);
+            createPeerConnection(isInitiator, activePeerId);
         } else {
-            createPeerConnection(isInitiator, peerChannels[broadCastId]);
+            createPeerConnection(isInitiator, broadCastId);
         }
     }
     // console.log(peerChannels);
 }
 
-function createPeerConnection(isInitiator, peerChannel) {
+function createPeerConnection(isInitiator, peerId) {
+    var peerChannel = peerChannels[peerId];
     if (peerChannel["pc"] != null) return;
     peerChannel["pc"] = new webkitRTCPeerConnection(configuration);
     // send any ice candidates to the other peer
@@ -218,10 +251,14 @@ function createPeerConnection(isInitiator, peerChannel) {
 
     // once the remote stream arrives, show it in the remote video element
     peerChannel["pc"].onaddstream = function (evt) {
-        remoteView.src = URL.createObjectURL(evt.stream);
-        if (videoCheckBox.checked)
-            remoteView.style.visibility = "visible";
-        else if (audioCheckBox.checked && !(chatCheckBox.checked))
+        var rmView = remoteView;
+        if (callMode == 2) {
+            rmView = createVideoElement(peerId);
+        }
+        rmView.src = URL.createObjectURL(evt.stream);
+        if (videoCheckBox.checked) {
+            rmView.style.visibility = "visible";
+        } else if (audioCheckBox.checked && !(chatCheckBox.checked))
             audioOnlyView.style.visibility = "visible";
         sendOrientationUpdate(peerChannel["peer"]);
     };

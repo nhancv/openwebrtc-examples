@@ -99,6 +99,8 @@ function SignalingChannel(sessionId) {
             callButton.disabled = true;
             if (callMode == 1) {
                 remoteView.style.visibility = "hidden";
+            } else if (callMode == 2) {
+                document.getElementById(peerUserId).style.visibility = "hidden";
             }
             var pc = peerChannels[peerUserId]["pc"];
             if (pc) {
