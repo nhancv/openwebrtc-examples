@@ -123,7 +123,7 @@ window.onload = function () {
 
             // another peer has joined our session
             signalingChannel.onpeer = function (evt) {
-                if(peerIds[broadCastId]!=-1 && callMode==1){
+                if (callMode == 0 || (callMode == 1 && peerIds[broadCastId] != -1)) {
                     callButton.disabled = false;
                 }
                 shareView.style.visibility = "hidden";
