@@ -97,10 +97,10 @@ function SignalingChannel(sessionId) {
         };
         peerChannels[peerUserId]["peer"].ondisconnect = function () {
             callButton.disabled = true;
-            if (callMode == 1) {
+            if (callMode < 2) {
                 remoteView.style.visibility = "hidden";
             } else if (callMode == 2) {
-                document.getElementById(peerUserId).style.visibility = "hidden";
+                document.getElementById("div-" + peerUserId).remove();
             }
             var pc = peerChannels[peerUserId]["pc"];
             if (pc) {

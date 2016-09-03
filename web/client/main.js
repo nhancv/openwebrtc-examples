@@ -134,10 +134,6 @@ window.onload = function () {
             }, logError);
         }
 
-        if (callMode == 2) {
-            start(false);
-        }
-
         function peerJoin() {
             var sessionId = document.getElementById("session_txt").value;
             signalingChannel = new SignalingChannel(sessionId);
@@ -154,7 +150,8 @@ window.onload = function () {
 
             // another peer has joined our session
             signalingChannel.onpeer = function (evt) {
-                if (callMode != 1 || (callMode == 1 && peerIds[broadCastId] != -1)) {
+                if ((peerIds.indexOf(broadCastId) != -1 && callMode == 1) ||
+                    peerIds.indexOf(broadCastId) == -1) {
                     callButton.disabled = false;
                 }
                 shareView.style.visibility = "hidden";
@@ -182,6 +179,9 @@ function createVideoElement(id) {
     var div = document.createElement("div");
     var att = document.createAttribute("style");
     att.value = "display:inline-block;width:300px;background: white;";
+    div.setAttributeNode(att);
+    att = document.createAttribute("id");
+    att.value = "div-" + id;
     div.setAttributeNode(att);
 
     var video = document.createElement("video");
