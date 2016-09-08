@@ -61,7 +61,7 @@ import javax.net.ssl.TrustManagerFactory;
 public class SignalingChannel {
     public static final String TAG = "EventSource";
 
-//    private final HttpClient mHttpSendClient = new DefaultHttpClient();
+    public static final String broadCastId = "000000000000";
     private final Handler mMainHandler;
     private final String mClientToServerUrl;
     private final String mServerToClientUrl;
@@ -240,23 +240,23 @@ public class SignalingChannel {
     }
 
     public interface MessageListener {
-        public void onMessage(JSONObject data);
+        void onMessage(JSONObject data);
     }
 
     public interface JoinListener {
-        public void onPeerJoin(final PeerChannel peerChannel);
+        void onPeerJoin(final PeerChannel peerChannel);
     }
 
     public interface SessionFullListener {
-        public void onSessionFull();
+        void onSessionFull();
     }
 
     public interface DisconnectListener {
-        public void onDisconnect();
+        void onDisconnect();
     }
 
     public interface PeerDisconnectListener {
-        public void onPeerDisconnect(final PeerChannel peerChannel);
+        void onPeerDisconnect(final PeerChannel peerChannel);
     }
 
     private class SendThread extends Thread {
@@ -289,8 +289,8 @@ public class SignalingChannel {
                 public void run() {
                     HttpURLConnection urlConnection = setUpHttpsConnection(mClientToServerUrl + "/" + mPeerId);
                     try {
-                        urlConnection.setReadTimeout( 10000 /*milliseconds*/ );
-                        urlConnection.setConnectTimeout( 15000 /* milliseconds */ );
+                        urlConnection.setReadTimeout(10000 /*milliseconds*/);
+                        urlConnection.setConnectTimeout(15000 /* milliseconds */);
                         urlConnection.setRequestMethod("POST");
                         urlConnection.setDoInput(true);
                         urlConnection.setDoOutput(true);

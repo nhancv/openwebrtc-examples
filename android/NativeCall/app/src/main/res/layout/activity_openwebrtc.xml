@@ -1,13 +1,13 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-             android:layout_width="match_parent"
-             android:layout_height="match_parent"
-             android:keepScreenOn="true">
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:keepScreenOn="true">
 
     <ImageView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
-        android:src="@drawable/background"/>
+        android:src="@drawable/background" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -36,15 +36,14 @@
                     android:paddingStart="10dp"
                     android:text="Simple WebRTC Example"
                     android:textColor="#333"
-                    android:textSize="24sp"/>
+                    android:textSize="24sp" />
 
                 <View
                     android:layout_width="40dp"
                     android:layout_height="40dp"
                     android:layout_marginEnd="5dp"
                     android:background="@android:drawable/ic_menu_manage"
-                    android:onClick="onSettingsClicked"
-                    />
+                    android:onClick="onSettingsClicked" />
             </LinearLayout>
 
             <LinearLayout
@@ -73,14 +72,14 @@
                     android:paddingTop="15dp"
                     android:singleLine="true"
                     android:textColor="#333"
-                    android:textSize="18sp"/>
+                    android:textSize="18sp" />
 
                 <View
                     android:layout_width="40dp"
                     android:layout_height="40dp"
                     android:layout_marginEnd="5dp"
                     android:background="@android:drawable/ic_menu_close_clear_cancel"
-                    android:onClick="onCancelSettingsClicked"/>
+                    android:onClick="onCancelSettingsClicked" />
             </LinearLayout>
         </FrameLayout>
 
@@ -103,7 +102,7 @@
                 android:maxLines="1"
                 android:singleLine="true"
                 android:text=""
-                android:textColor="@color/default_text"/>
+                android:textColor="@color/default_text" />
 
             <Button
                 android:id="@+id/join"
@@ -113,7 +112,7 @@
                 android:fontFamily="sans-serif-light"
                 android:onClick="onJoinClicked"
                 android:text="Join"
-                android:textColor="@color/default_text"/>
+                android:textColor="@color/default_text" />
 
             <Button
                 android:id="@+id/call"
@@ -123,7 +122,7 @@
                 android:fontFamily="sans-serif-light"
                 android:onClick="onCallClicked"
                 android:text="Call"
-                android:textColor="@color/default_text"/>
+                android:textColor="@color/default_text" />
         </LinearLayout>
 
         <CheckBox
@@ -134,7 +133,7 @@
             android:layout_marginStart="10dp"
             android:fontFamily="sans-serif-light"
             android:text="Audio"
-            android:textColor="@color/default_text"/>
+            android:textColor="@color/default_text" />
 
         <CheckBox
             android:id="@+id/video"
@@ -145,8 +144,28 @@
             android:checked="true"
             android:fontFamily="sans-serif-light"
             android:text="Video"
-            android:textColor="@color/default_text"/>
+            android:textColor="@color/default_text" />
+
+        <CheckBox
+            android:id="@+id/cbBroadcast"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="10dp"
+            android:layout_marginStart="10dp"
+            android:fontFamily="sans-serif-light"
+            android:text="Broadcast"
+            android:textColor="@color/default_text" />
+
+        <CheckBox
+            android:id="@+id/cbConference"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="10dp"
+            android:layout_marginStart="10dp"
+            android:fontFamily="sans-serif-light"
+            android:text="Conference"
+            android:textColor="@color/default_text" />
     </LinearLayout>
 
-    <include layout="@layout/video_layout"/>
+    <include layout="@layout/video_layout" />
 </FrameLayout>

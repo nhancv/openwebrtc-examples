@@ -92,10 +92,13 @@ public class NativeCallExampleActivity extends Activity implements
     private EditText mSessionInput;
     private CheckBox mAudioCheckBox;
     private CheckBox mVideoCheckBox;
+    private CheckBox mBroadCastCheckBox;
+    private CheckBox mConferenceCheckBox;
     private EditText mUrlSetting;
     private View mHeader;
     private View mSettingsHeader;
 
+    private int callMode;//0: p2p; 1:broadcast, 2: conference
     private SignalingChannel mSignalingChannel;
     private InputMethodManager mInputMethodManager;
     private WindowManager mWindowManager;
@@ -191,6 +194,8 @@ public class NativeCallExampleActivity extends Activity implements
         mSessionInput = (EditText) findViewById(R.id.session_id);
         mAudioCheckBox = (CheckBox) findViewById(R.id.audio);
         mVideoCheckBox = (CheckBox) findViewById(R.id.video);
+        mBroadCastCheckBox = (CheckBox) findViewById(R.id.cbBroadcast);
+        mConferenceCheckBox = (CheckBox) findViewById(R.id.cbConference);
 
         mJoinButton.setEnabled(true);
 
@@ -250,9 +255,12 @@ public class NativeCallExampleActivity extends Activity implements
         mSignalingChannel.setDisconnectListener(this);
         mSignalingChannel.setSessionFullListener(this);
 
-        boolean wantAudio = mAudioCheckBox.isChecked();
-        boolean wantVideo = mVideoCheckBox.isChecked();
-        mStreamSet = SimpleStreamSet.defaultConfig(wantAudio, wantVideo);
+        boolean sendAudio = mAudioCheckBox.isChecked();
+        boolean sendVideo = mVideoCheckBox.isChecked();
+        boolean revcAudio = !sendAudio || !mBroadCastCheckBox.isChecked();
+        boolean revcVideo = !sendVideo || !mBroadCastCheckBox.isChecked();
+        mStreamSet = SimpleStreamSet.defaultConfig(sendAudio, sendVideo, revcAudio, revcVideo);
+
         mSelfView = CameraSource.getInstance().createVideoView();
         mRemoteView = mStreamSet.createRemoteView();
         updateVideoView(true);
