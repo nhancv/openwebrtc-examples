@@ -84,20 +84,10 @@ public class SignalingChannel {
         open();
     }
 
-    private class SendThread extends Thread {
-        @Override
-        public void run() {
-            Looper.prepare();
-            mSendHandler = new Handler();
-            Looper.loop();
-            Log.d(TAG, "SendThread: quit");
-        }
-    }
-
     public HttpsURLConnection setUpHttpsConnection(String urlString) {
         try {
             CertificateFactory cf = CertificateFactory.getInstance("X.509");
-            InputStream caInput = new BufferedInputStream(context.getAssets().open("cert.cer"));
+            InputStream caInput = new BufferedInputStream(context.getAssets().open("nhancao.cert"));
             Certificate ca = cf.generateCertificate(caInput);
 
             // Create a KeyStore containing our trusted CAs
@@ -121,7 +111,7 @@ public class SignalingChannel {
                 public boolean verify(String hostname, SSLSession session) {
                     HostnameVerifier hv =
                             HttpsURLConnection.getDefaultHostnameVerifier();
-                    return hv.verify("tamphan", session);
+                    return hv.verify("nhancao", session);
                 }
             };
 
@@ -267,6 +257,16 @@ public class SignalingChannel {
 
     public interface PeerDisconnectListener {
         public void onPeerDisconnect(final PeerChannel peerChannel);
+    }
+
+    private class SendThread extends Thread {
+        @Override
+        public void run() {
+            Looper.prepare();
+            mSendHandler = new Handler();
+            Looper.loop();
+            Log.d(TAG, "SendThread: quit");
+        }
     }
 
     public class PeerChannel {
