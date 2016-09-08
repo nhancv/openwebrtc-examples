@@ -61,7 +61,7 @@ import javax.net.ssl.TrustManagerFactory;
 public class SignalingChannel {
     public static final String TAG = "EventSource";
 
-    public static final String broadCastId = "000000000000";
+    public static final String BROADCAST_ID = "000000000000";
     private final Handler mMainHandler;
     private final String mClientToServerUrl;
     private final String mServerToClientUrl;
@@ -72,10 +72,17 @@ public class SignalingChannel {
     private DisconnectListener mDisconnectListener;
     private SessionFullListener mSessionFullListener;
     private Context context;
+    private int callMode;
 
-    public SignalingChannel(Context context, String baseUrl, String session) {
+    public SignalingChannel(Context context, String baseUrl, String session, int callMode) {
         this.context = context;
+        this.callMode = callMode;
         String userId = new BigInteger(40, new Random()).toString(32);
+
+        //set boardcast id
+        if (callMode == 1) {
+            userId = BROADCAST_ID;
+        }
         mServerToClientUrl = baseUrl + "/stoc/" + session + "/" + userId;
         mClientToServerUrl = baseUrl + "/ctos/" + session + "/" + userId;
         mMainHandler = new Handler(Looper.getMainLooper());
@@ -240,7 +247,7 @@ public class SignalingChannel {
     }
 
     public interface MessageListener {
-        void onMessage(JSONObject data);
+        void onMessage(PeerChannel peerChannel, JSONObject data);
     }
 
     public interface JoinListener {
@@ -321,7 +328,7 @@ public class SignalingChannel {
             if (mMessageListener != null) {
                 try {
                     JSONObject json = new JSONObject(message);
-                    mMessageListener.onMessage(json);
+                    mMessageListener.onMessage(this, json);
                 } catch (JSONException exception) {
                     Log.w(TAG, "failed to decode message: " + exception);
                 }
