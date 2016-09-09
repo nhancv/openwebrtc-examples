@@ -25,35 +25,43 @@
 
 package com.ericsson.research.owr.examples.nativecall;
 
+import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.ByteArrayEntity;
-import org.apache.http.impl.client.DefaultHttpClient;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.lang.StringBuilder;
+import java.io.OutputStream;
 import java.math.BigInteger;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.security.KeyStore;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManagerFactory;
+
+
 public class SignalingChannel {
     public static final String TAG = "EventSource";
 
-    private final HttpClient mHttpSendClient = new DefaultHttpClient();
+    public static final String BROADCAST_ID = "000000000000";
     private final Handler mMainHandler;
     private final String mClientToServerUrl;
     private final String mServerToClientUrl;
@@ -63,9 +71,18 @@ public class SignalingChannel {
     private JoinListener mJoinListener;
     private DisconnectListener mDisconnectListener;
     private SessionFullListener mSessionFullListener;
+    private Context context;
+    private int callMode;
 
-    public SignalingChannel(String baseUrl, String session) {
+    public SignalingChannel(Context context, String baseUrl, String session, int callMode) {
+        this.context = context;
+        this.callMode = callMode;
         String userId = new BigInteger(40, new Random()).toString(32);
+
+        //set boardcast id
+        if (callMode == 1) {
+            userId = BROADCAST_ID;
+        }
         mServerToClientUrl = baseUrl + "/stoc/" + session + "/" + userId;
         mClientToServerUrl = baseUrl + "/ctos/" + session + "/" + userId;
         mMainHandler = new Handler(Looper.getMainLooper());
@@ -74,13 +91,45 @@ public class SignalingChannel {
         open();
     }
 
-    private class SendThread extends Thread {
-        @Override
-        public void run() {
-            Looper.prepare();
-            mSendHandler = new Handler();
-            Looper.loop();
-            Log.d(TAG, "SendThread: quit");
+    public HttpsURLConnection setUpHttpsConnection(String urlString) {
+        try {
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            InputStream caInput = new BufferedInputStream(context.getAssets().open("nhancao.cert"));
+            Certificate ca = cf.generateCertificate(caInput);
+
+            // Create a KeyStore containing our trusted CAs
+            String keyStoreType = KeyStore.getDefaultType();
+            KeyStore keyStore = KeyStore.getInstance(keyStoreType);
+            keyStore.load(null, null);
+            keyStore.setCertificateEntry("ca", ca);
+
+            // Create a TrustManager that trusts the CAs in our KeyStore
+            String tmfAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmfAlgorithm);
+            tmf.init(keyStore);
+
+            // Create an SSLContext that uses our TrustManager
+            SSLContext context = SSLContext.getInstance("TLS");
+            context.init(null, tmf.getTrustManagers(), null);
+
+            // Tell the URLConnection to use a SocketFactory from our SSLContext
+            HostnameVerifier hostnameVerifier = new HostnameVerifier() {
+                @Override
+                public boolean verify(String hostname, SSLSession session) {
+                    HostnameVerifier hv =
+                            HttpsURLConnection.getDefaultHostnameVerifier();
+                    return hv.verify("nhancao", session);
+                }
+            };
+
+            URL url = new URL(urlString);
+            HttpsURLConnection urlConnection = (HttpsURLConnection) url.openConnection();
+            urlConnection.setSSLSocketFactory(context.getSocketFactory());
+            urlConnection.setHostnameVerifier(hostnameVerifier);
+            return urlConnection;
+        } catch (Exception ex) {
+            Log.e(TAG, "Failed to establish SSL connection to server: " + ex.toString());
+            return null;
         }
     }
 
@@ -88,18 +137,10 @@ public class SignalingChannel {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                HttpClient httpClient = new DefaultHttpClient();
-                HttpGet httpGet = new HttpGet(mServerToClientUrl);
-
                 try {
-                    HttpResponse httpResponse = httpClient.execute(httpGet);
-                    HttpEntity httpEntity = httpResponse.getEntity();
-
-                    if (httpEntity != null) {
-                        mEventStream = httpEntity.getContent();
-                        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(mEventStream));
-                        readEventStream(bufferedReader);
-                    }
+                    mEventStream = setUpHttpsConnection(mServerToClientUrl).getInputStream();
+                    BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(mEventStream));
+                    readEventStream(bufferedReader);
                 } catch (IOException exception) {
                     Log.e(TAG, "SSE: " + exception);
                     exception.printStackTrace();
@@ -206,23 +247,33 @@ public class SignalingChannel {
     }
 
     public interface MessageListener {
-        public void onMessage(JSONObject data);
+        void onMessage(PeerChannel peerChannel, JSONObject data);
     }
 
     public interface JoinListener {
-        public void onPeerJoin(final PeerChannel peerChannel);
+        void onPeerJoin(final PeerChannel peerChannel);
     }
 
     public interface SessionFullListener {
-        public void onSessionFull();
+        void onSessionFull();
     }
 
     public interface DisconnectListener {
-        public void onDisconnect();
+        void onDisconnect();
     }
 
     public interface PeerDisconnectListener {
-        public void onPeerDisconnect(final PeerChannel peerChannel);
+        void onPeerDisconnect(final PeerChannel peerChannel);
+    }
+
+    private class SendThread extends Thread {
+        @Override
+        public void run() {
+            Looper.prepare();
+            mSendHandler = new Handler();
+            Looper.loop();
+            Log.d(TAG, "SendThread: quit");
+        }
     }
 
     public class PeerChannel {
@@ -243,12 +294,27 @@ public class SignalingChannel {
             mSendHandler.post(new Runnable() {
                 @Override
                 public void run() {
-                    HttpPost httpPost = new HttpPost(mClientToServerUrl + "/" + mPeerId);
+                    HttpURLConnection urlConnection = setUpHttpsConnection(mClientToServerUrl + "/" + mPeerId);
                     try {
-                        httpPost.setEntity(new ByteArrayEntity(message.toString().getBytes("UTF8")));
-                        mHttpSendClient.execute(httpPost);
+                        urlConnection.setReadTimeout(10000 /*milliseconds*/);
+                        urlConnection.setConnectTimeout(15000 /* milliseconds */);
+                        urlConnection.setRequestMethod("POST");
+                        urlConnection.setDoInput(true);
+                        urlConnection.setDoOutput(true);
+                        urlConnection.setFixedLengthStreamingMode(message.toString().getBytes().length);
+                        urlConnection.setRequestProperty("Content-Type", "text/plain; charset=UTF-8");
+                        urlConnection.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+                        urlConnection.connect();
+                        OutputStream os = new BufferedOutputStream(urlConnection.getOutputStream());
+                        os.write(message.toString().getBytes("UTF-8"));
+                        //clean up
+                        os.flush();
+                        os.close();
                     } catch (IOException exception) {
+                        exception.printStackTrace();
                         Log.e(TAG, "failed to send message to " + mPeerId + ": " + exception.toString());
+                    } finally {
+                        urlConnection.disconnect();
                     }
                 }
             });
@@ -262,7 +328,7 @@ public class SignalingChannel {
             if (mMessageListener != null) {
                 try {
                     JSONObject json = new JSONObject(message);
-                    mMessageListener.onMessage(json);
+                    mMessageListener.onMessage(this, json);
                 } catch (JSONException exception) {
                     Log.w(TAG, "failed to decode message: " + exception);
                 }

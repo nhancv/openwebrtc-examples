@@ -25,11 +25,15 @@
 
 package com.ericsson.research.owr.examples.nativecall;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.support.v4.app.ActivityCompat;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.TextureView;
 import android.view.View;
@@ -40,6 +44,8 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -60,22 +66,23 @@ import com.ericsson.research.owr.sdk.VideoView;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class NativeCallExampleActivity extends Activity implements
         SignalingChannel.JoinListener,
         SignalingChannel.DisconnectListener,
         SignalingChannel.SessionFullListener,
         SignalingChannel.MessageListener,
-        SignalingChannel.PeerDisconnectListener,
-        RtcSession.OnLocalCandidateListener,
-        RtcSession.OnLocalDescriptionListener {
+        SignalingChannel.PeerDisconnectListener {
     private static final String TAG = "NativeCall";
 
     private static final String PREFERENCE_KEY_SERVER_URL = "url";
     private static final int SETTINGS_ANIMATION_DURATION = 400;
     private static final int SETTINGS_ANIMATION_ANGLE = 90;
+    private static final int REQUEST_CAMERA = 0x01;
 
     /**
      * Initialize OpenWebRTC at startup
@@ -86,21 +93,29 @@ public class NativeCallExampleActivity extends Activity implements
         Owr.runInBackground();
     }
 
+    boolean sendAudio, sendVideo, revcAudio, revcVideo;
     private Button mJoinButton;
     private Button mCallButton;
     private EditText mSessionInput;
     private CheckBox mAudioCheckBox;
     private CheckBox mVideoCheckBox;
+    private CheckBox mBroadCastCheckBox;
+    private CheckBox mConferenceCheckBox;
     private EditText mUrlSetting;
+    private LinearLayout vConferenceContainer;
+    private HorizontalScrollView vConferenceContainerScrollView;
     private View mHeader;
     private View mSettingsHeader;
-
+    private int callMode;//0: p2p; 1:broadcast, 2: conference
     private SignalingChannel mSignalingChannel;
     private InputMethodManager mInputMethodManager;
     private WindowManager mWindowManager;
-    private SignalingChannel.PeerChannel mPeerChannel;
-    private RtcSession mRtcSession;
-    private SimpleStreamSet mStreamSet;
+    private Map<String, SignalingChannel.PeerChannel> peerChannels = new HashMap<>();
+    private List<String> peerIds = new ArrayList<>();
+    private String activePeerId;
+    private Map<String, RtcSession> rtcSessions = new HashMap<>();
+    private Map<String, SimpleStreamSet> streamSets = new HashMap<>();
+    private Map<String, VideoView> videoViewMap = new HashMap<>();
     private VideoView mSelfView;
     private VideoView mRemoteView;
     private RtcConfig mRtcConfig;
@@ -112,9 +127,47 @@ public class NativeCallExampleActivity extends Activity implements
         initUi();
 
         mInputMethodManager = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-
         mWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         mRtcConfig = RtcConfigs.defaultConfig(Config.STUN_SERVER);
+        checkCameraPermission();
+    }
+
+    /**
+     * Method to check permission
+     */
+    void checkCameraPermission() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+            // Camera permission has not been granted.
+            requestCameraPermission();
+        }
+    }
+
+    /**
+     * Method to request permission for camera
+     */
+    private void requestCameraPermission() {
+        // Camera permission has not been granted yet. Request it directly.
+        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA},
+                REQUEST_CAMERA);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == REQUEST_CAMERA) {
+            // BEGIN_INCLUDE(permission_result)
+            // Received permission result for camera permission.
+            Log.i(TAG, "Received response for Camera permission request.");
+
+            // Check if the only required permission has been granted
+            if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Camera permission has been granted, preview can be displayed
+            } else {
+                //Permission not granted
+                Toast.makeText(NativeCallExampleActivity.this, "You need to grant camera permission to use camera", Toast.LENGTH_LONG).show();
+            }
+
+        }
     }
 
     @Override
@@ -125,21 +178,28 @@ public class NativeCallExampleActivity extends Activity implements
     }
 
     private void updateVideoView(boolean running) {
-        if (mStreamSet != null) {
-            TextureView selfView = (TextureView) findViewById(R.id.self_view);
-            TextureView remoteView = (TextureView) findViewById(R.id.remote_view);
-            selfView.setVisibility(running ? View.VISIBLE : View.INVISIBLE);
-            remoteView.setVisibility(running ? View.VISIBLE : View.INVISIBLE);
-            if (running) {
-                Log.d(TAG, "setting self-view: " + selfView);
+        TextureView selfView = (TextureView) findViewById(R.id.self_view);
+        TextureView remoteView = (TextureView) findViewById(R.id.remote_view);
+        selfView.setVisibility(running ? View.VISIBLE : View.INVISIBLE);
+        remoteView.setVisibility(running ? View.VISIBLE : View.INVISIBLE);
+        if (running) {
+            Log.d(TAG, "setting self-view: " + selfView);
+            if (mSelfView != null)
                 mSelfView.setView(selfView);
+            if (mRemoteView != null)
                 mRemoteView.setView(remoteView);
-    //            mStreamSet.setDeviceOrientation(mWindowManager.getDefaultDisplay().getRotation());
-            } else {
-                Log.d(TAG, "stopping self-view");
+            //            mStreamSet.setDeviceOrientation(mWindowManager.getDefaultDisplay().getRotation());
+        } else {
+            Log.d(TAG, "stopping self-view");
+            if (mSelfView != null)
                 mSelfView.stop();
+            if (mRemoteView != null)
                 mRemoteView.stop();
-            }
+        }
+
+        if (running && callMode == 2) {
+            remoteView.setVisibility(View.GONE);
+            vConferenceContainerScrollView.setVisibility(View.VISIBLE);
         }
     }
 
@@ -151,6 +211,10 @@ public class NativeCallExampleActivity extends Activity implements
         mSessionInput = (EditText) findViewById(R.id.session_id);
         mAudioCheckBox = (CheckBox) findViewById(R.id.audio);
         mVideoCheckBox = (CheckBox) findViewById(R.id.video);
+        mBroadCastCheckBox = (CheckBox) findViewById(R.id.cbBroadcast);
+        mConferenceCheckBox = (CheckBox) findViewById(R.id.cbConference);
+        vConferenceContainerScrollView = (HorizontalScrollView) findViewById(R.id.vConferenceContainerScrollView);
+        vConferenceContainer = (LinearLayout) findViewById(R.id.vConferenceContainer);
 
         mJoinButton.setEnabled(true);
 
@@ -180,17 +244,22 @@ public class NativeCallExampleActivity extends Activity implements
     }
 
     public void onSelfViewClicked(final View view) {
-        Log.d(TAG, "onSelfViewClicked");
-        if (mStreamSet != null) {
-            if (mSelfView != null) {
-                mSelfView.setRotation((mSelfView.getRotation() + 1) % 4);
-            }
+        Log.e(TAG, "onSelfViewClicked");
+        if (mSelfView != null) {
+            mSelfView.setRotation((mSelfView.getRotation() + 1) % 4);
         }
-//        mStreamSet.toggleCamera();
     }
 
     public void onJoinClicked(final View view) {
-        Log.d(TAG, "onJoinClicked");
+        Log.e(TAG, "onJoinClicked");
+
+        //Set up call mode
+        callMode = 0;
+        if (mBroadCastCheckBox.isChecked()) {
+            callMode = 1;
+        } else if (mConferenceCheckBox.isChecked()) {
+            callMode = 2;
+        }
 
         String sessionId = mSessionInput.getText().toString();
         if (sessionId.isEmpty()) {
@@ -204,54 +273,119 @@ public class NativeCallExampleActivity extends Activity implements
         mJoinButton.setEnabled(false);
         mAudioCheckBox.setEnabled(false);
         mVideoCheckBox.setEnabled(false);
+        mBroadCastCheckBox.setEnabled(false);
+        mConferenceCheckBox.setEnabled(false);
 
-        mSignalingChannel = new SignalingChannel(getUrl(), sessionId);
+        mSignalingChannel = new SignalingChannel(NativeCallExampleActivity.this, getUrl(), sessionId, callMode);
         mSignalingChannel.setJoinListener(this);
         mSignalingChannel.setDisconnectListener(this);
         mSignalingChannel.setSessionFullListener(this);
 
-        boolean wantAudio = mAudioCheckBox.isChecked();
-        boolean wantVideo = mVideoCheckBox.isChecked();
-        mStreamSet = SimpleStreamSet.defaultConfig(wantAudio, wantVideo);
+        sendAudio = mAudioCheckBox.isChecked();
+        sendVideo = mVideoCheckBox.isChecked();
+        revcAudio = !sendAudio || !(callMode == 1);
+        revcVideo = !sendVideo || !(callMode == 1);
+
         mSelfView = CameraSource.getInstance().createVideoView();
-        mRemoteView = mStreamSet.createRemoteView();
         updateVideoView(true);
     }
 
     @Override
     public void onPeerJoin(final SignalingChannel.PeerChannel peerChannel) {
-        Log.v(TAG, "onPeerJoin => " + peerChannel.getPeerId());
-        mCallButton.setEnabled(true);
-        mPeerChannel = peerChannel;
-        mPeerChannel.setDisconnectListener(this);
-        mPeerChannel.setMessageListener(this);
+        Log.e(TAG, "onPeerJoin => " + peerChannel.getPeerId());
 
-        mRtcSession = RtcSessions.create(mRtcConfig);
-        mRtcSession.setOnLocalCandidateListener(this);
-        mRtcSession.setOnLocalDescriptionListener(this);
+        peerChannel.setDisconnectListener(this);
+        peerChannel.setMessageListener(this);
+        peerIds.add(peerChannel.getPeerId());
+        peerChannels.put(peerChannel.getPeerId(), peerChannel);
+        if (callMode == 1) {
+            activePeerId = SignalingChannel.BROADCAST_ID;
+        } else {
+            activePeerId = peerChannel.getPeerId();
+        }
+        RtcSession rtcSession = RtcSessions.create(mRtcConfig);
+        rtcSession.setOnLocalCandidateListener(new RtcSession.OnLocalCandidateListener() {
+            @Override
+            public void onLocalCandidate(RtcCandidate candidate) {
+                try {
+                    JSONObject json = new JSONObject();
+                    json.putOpt("candidate", RtcCandidates.toJsep(candidate));
+                    Log.d(TAG, "sending candidate: " + json);
+                    peerChannel.send(json);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        rtcSession.setOnLocalDescriptionListener(new RtcSession.OnLocalDescriptionListener() {
+            @Override
+            public void onLocalDescription(SessionDescription localDescription) {
+                try {
+                    JSONObject json = SessionDescriptions.toJsep(localDescription);
+                    Log.d(TAG, "sending sdp: " + json);
+                    peerChannel.send(json);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        rtcSessions.put(peerChannel.getPeerId(), rtcSession);
+
+        SimpleStreamSet streamSet = SimpleStreamSet.defaultConfig(sendAudio, sendVideo, revcAudio, revcVideo);
+        streamSets.put(peerChannel.getPeerId(), streamSet);
+
+        //Update call button
+        if ((peerIds.indexOf(SignalingChannel.BROADCAST_ID) != -1 && callMode == 1) || peerIds.indexOf(SignalingChannel.BROADCAST_ID) == -1) {
+            mCallButton.setEnabled(true);
+        }
     }
 
     @Override
     public void onPeerDisconnect(final SignalingChannel.PeerChannel peerChannel) {
-        Log.d(TAG, "onPeerDisconnect => " + peerChannel.getPeerId());
-        mRtcSession.stop();
-        mPeerChannel = null;
-        updateVideoView(false);
-        mSessionInput.setEnabled(true);
-        mJoinButton.setEnabled(true);
-        mCallButton.setEnabled(false);
-        mAudioCheckBox.setEnabled(true);
-        mVideoCheckBox.setEnabled(true);
+        Log.e(TAG, "onPeerDisconnect => " + peerChannel.getPeerId());
+        try {
+            if (peerIds.size() < 2) {
+                updateVideoView(false);
+            }
+            if (callMode == 2) {
+                videoViewMap.get(peerChannel.getPeerId()).stop();
+                videoViewMap.remove(peerChannel.getPeerId());
+            }
+
+            rtcSessions.get(peerChannel.getPeerId()).stop();
+            streamSets.remove(peerChannel.getPeerId());
+            rtcSessions.remove(peerChannel.getPeerId());
+            for (int i = 0; i < peerIds.size(); i++) {
+                if (peerIds.get(i).equals(peerChannel.getPeerId())) {
+                    if (callMode == 2) {
+                        vConferenceContainer.removeViewAt(i);
+                    }
+                    peerIds.remove(i);
+                    break;
+                }
+            }
+            peerChannels.remove(peerChannel.getPeerId());
+
+            mSessionInput.setEnabled(true);
+            mJoinButton.setEnabled(true);
+            mCallButton.setEnabled(false);
+            mAudioCheckBox.setEnabled(true);
+            mVideoCheckBox.setEnabled(true);
+            mBroadCastCheckBox.setEnabled(true);
+            mConferenceCheckBox.setEnabled(true);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
-    public synchronized void onMessage(final JSONObject json) {
+    public synchronized void onMessage(final SignalingChannel.PeerChannel peerChannel, final JSONObject json) {
         if (json.has("candidate")) {
             JSONObject candidate = json.optJSONObject("candidate");
             Log.v(TAG, "candidate: " + candidate);
             RtcCandidate rtcCandidate = RtcCandidates.fromJsep(candidate);
             if (rtcCandidate != null) {
-                mRtcSession.addRemoteCandidate(rtcCandidate);
+                rtcSessions.get(peerChannel.getPeerId()).addRemoteCandidate(rtcCandidate);
             } else {
                 Log.w(TAG, "invalid candidate: " + candidate);
             }
@@ -260,10 +394,11 @@ public class NativeCallExampleActivity extends Activity implements
             Log.v(TAG, "sdp: " + json);
             try {
                 SessionDescription sessionDescription = SessionDescriptions.fromJsep(json);
+                assert sessionDescription != null;
                 if (sessionDescription.getType() == SessionDescription.Type.OFFER) {
-                    onInboundCall(sessionDescription);
+                    onInboundCall(peerChannel, sessionDescription);
                 } else {
-                    onAnswer(sessionDescription);
+                    onAnswer(peerChannel, sessionDescription);
                 }
             } catch (InvalidDescriptionException e) {
                 e.printStackTrace();
@@ -274,63 +409,100 @@ public class NativeCallExampleActivity extends Activity implements
         }
     }
 
-    @Override
-    public void onLocalCandidate(final RtcCandidate candidate) {
-        if (mPeerChannel != null) {
-            try {
-                JSONObject json = new JSONObject();
-                json.putOpt("candidate", RtcCandidates.toJsep(candidate));
-                Log.d(TAG, "sending candidate: " + json);
-                mPeerChannel.send(json);
-            } catch (JSONException e) {
-                e.printStackTrace();
+    public void onCallClicked(final View view) {
+        Log.e(TAG, "onCallClicked");
+        if (callMode == 1 || callMode == 2) {
+            for (int i = 0; i < peerIds.size(); i++) {
+                SimpleStreamSet streamSet = streamSets.get(peerIds.get(i));
+                rtcSessions.get(peerIds.get(i)).start(streamSet);
+                if (callMode == 2 && !videoViewMap.containsKey(peerIds.get(i))) {
+                    VideoView videoView = streamSet.createRemoteView();
+                    TextureView textureView = createVideoView();
+                    videoView.setView(textureView);
+                    videoViewMap.put(peerIds.get(i), videoView);
+                }
+            }
+        } else if (callMode == 0) {
+            if (peerIds.indexOf(SignalingChannel.BROADCAST_ID) == -1) {
+                SimpleStreamSet streamSet = streamSets.get(activePeerId);
+                mRemoteView = streamSet.createRemoteView();
+                rtcSessions.get(activePeerId).start(streamSet);
+            } else {
+                SimpleStreamSet streamSet = streamSets.get(SignalingChannel.BROADCAST_ID);
+                mRemoteView = streamSet.createRemoteView();
+                rtcSessions.get(SignalingChannel.BROADCAST_ID).start(streamSet);
             }
         }
-    }
-
-    public void onCallClicked(final View view) {
-        Log.d(TAG, "onCallClicked");
-
-        mRtcSession.start(mStreamSet);
         mCallButton.setEnabled(false);
+        updateVideoView(true);
     }
 
-    private void onInboundCall(final SessionDescription sessionDescription) {
+    public void onRestartClicked(final View view) {
+        Log.d(TAG, "onRestartClicked");
+        Utils.restartApplication(getApplicationContext());
+    }
+
+    private void onInboundCall(final SignalingChannel.PeerChannel peerChannel, final SessionDescription sessionDescription) {
+        RtcSession rtcSession = rtcSessions.get(peerChannel.getPeerId());
         try {
-            mRtcSession.setRemoteDescription(sessionDescription);
-            mRtcSession.start(mStreamSet);
+            rtcSession.setRemoteDescription(sessionDescription);
+            SimpleStreamSet streamSet = streamSets.get(peerChannel.getPeerId());
+            if (callMode == 2 && !videoViewMap.containsKey(peerChannel.getPeerId())) {
+                VideoView videoView = streamSet.createRemoteView();
+                TextureView textureView = createVideoView();
+                videoView.setView(textureView);
+                videoViewMap.put(peerChannel.getPeerId(), videoView);
+            } else {
+                mRemoteView = streamSet.createRemoteView();
+            }
+            rtcSession.start(streamSet);
+            updateVideoView(true);
         } catch (InvalidDescriptionException e) {
             e.printStackTrace();
         }
     }
 
-    private void onAnswer(final SessionDescription sessionDescription) {
-        if (mRtcSession != null) {
+    private void onAnswer(final SignalingChannel.PeerChannel peerChannel, final SessionDescription sessionDescription) {
+        RtcSession rtcSession = rtcSessions.get(peerChannel.getPeerId());
+        if (rtcSession != null) {
             try {
-                mRtcSession.setRemoteDescription(sessionDescription);
+                rtcSession.setRemoteDescription(sessionDescription);
             } catch (InvalidDescriptionException e) {
                 e.printStackTrace();
             }
         }
     }
 
-    @Override
-    public void onLocalDescription(final SessionDescription localDescription) {
-        if (mPeerChannel != null) {
-            JSONObject json = SessionDescriptions.toJsep(localDescription);
-            Log.d(TAG, "sending sdp: " + json);
-            mPeerChannel.send(json);
-        }
+    private TextureView createVideoView() {
+        TextureView textureView = new TextureView(getApplicationContext());
+        textureView.setId(textureView.hashCode());
+        int size = (int) (240 * Utils.getDensity(getApplicationContext()));
+        textureView.setLayoutParams(new LinearLayout.LayoutParams(size, size, Gravity.CENTER));
+        vConferenceContainer.addView(textureView);
+        return textureView;
     }
+
 
     @Override
     public void onDisconnect() {
         Toast.makeText(this, "Disconnected from server", Toast.LENGTH_LONG).show();
-        updateVideoView(false);
-        mStreamSet = null;
-        mRtcSession.stop();
-        mRtcSession = null;
-        mSignalingChannel = null;
+        try {
+            updateVideoView(false);
+
+            for (int i = 0; i < peerIds.size(); i++) {
+                rtcSessions.get(peerIds.get(i)).stop();
+                videoViewMap.get(peerIds.get(i)).stop();
+            }
+            vConferenceContainer.removeAllViews();
+            videoViewMap.clear();
+            streamSets.clear();
+            rtcSessions.clear();
+            peerChannels.clear();
+            peerIds.clear();
+            mSignalingChannel = null;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override

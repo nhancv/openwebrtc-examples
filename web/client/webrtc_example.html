@@ -4,6 +4,9 @@
         <title>OpenWebRTC Demo</title>
         <meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width">
         <link rel="stylesheet" type="text/css" href="main.css">
+        <link rel="stylesheet" type="text/css" href="bootstrap/bootstrap.min.css">
+        <script src="bootstrap/jquery.min.js"></script>
+        <script src="bootstrap/bootstrap.min.js"></script>
         <script src="signaling_channel.js"></script>
         <script src="sdp.js"></script>
         <script src="main.js"></script>
@@ -11,7 +14,7 @@
     <body>
         <header>
             <div id="heading">
-                <h2>Simple WebRTC Example</h2>
+                <h3 style="margin-top: 0;">Simple WebRTC Example</h3>
             </div>
             <div id="owr-logo"></div>
         </header>
@@ -19,10 +22,13 @@
             <div id="settings-container">
                 Session id <input type="text" id="session_txt" value="" size="10">
                 <input class="btn" type="button" id="join_but" value="Join" disabled>
-                <input class="btn" type="button" id="call_but" value="Call" disabled><br>
-                <input type="checkbox" id="audio_cb" checked>Audio<br>
+                <input class="btn" type="button" id="call_but" value="Call" disabled>
+                <br>
+                <input type="checkbox" id="audio_cb">Audio<br>
                 <input type="checkbox" id="video_cb" checked>Video<br>
-                <input type="checkbox" id="chat_cb">Chat
+                <input type="checkbox" id="chat_cb">Chat<br>
+                <input type="checkbox" id="broadcast_cb">Broadcast<br>
+                <input type="checkbox" id="conference_cb">Conference<br>
                 <div id="audio-only-container">Audio-only call</div>
                 <div id="share-container">
                     Send link to a friend: <a id="share_link" target="_blank" href=""></a>
@@ -31,6 +37,11 @@
             <div id="video-container">
                 <video id="self_view" class="shadow owr-overlay-video" autoplay muted></video>
                 <video id="remote_view" class="shadow owr-overlay-video" autoplay></video>
+            </div>
+            <br>
+            <br>
+            <br>
+            <div id="conference-container" style="display: none; text-align: center;" class="container-fluid">
             </div>
             <div id="chat_div"></div>
             <div id="chat-container">

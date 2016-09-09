@@ -34,4 +34,20 @@
         android:layout_height="match_parent"
         android:layout_weight="1"
         android:visibility="invisible"/>
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="240dp">
+
+        <LinearLayout
+            android:id="@+id/vConferenceContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:background="@android:color/black"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+        </LinearLayout>
+
+    </HorizontalScrollView>
 </LinearLayout>
