@@ -73,9 +73,7 @@ public class NativeCallExampleActivity extends Activity implements
         SignalingChannel.DisconnectListener,
         SignalingChannel.SessionFullListener,
         SignalingChannel.MessageListener,
-        SignalingChannel.PeerDisconnectListener,
-        RtcSession.OnLocalCandidateListener,
-        RtcSession.OnLocalDescriptionListener {
+        SignalingChannel.PeerDisconnectListener {
     private static final String TAG = "NativeCall";
 
     private static final String PREFERENCE_KEY_SERVER_URL = "url";
@@ -298,8 +296,31 @@ public class NativeCallExampleActivity extends Activity implements
             activePeerId = peerChannel.getPeerId();
         }
         RtcSession rtcSession = RtcSessions.create(mRtcConfig);
-        rtcSession.setOnLocalCandidateListener(this);
-        rtcSession.setOnLocalDescriptionListener(this);
+        rtcSession.setOnLocalCandidateListener(new RtcSession.OnLocalCandidateListener() {
+            @Override
+            public void onLocalCandidate(RtcCandidate candidate) {
+                try {
+                    JSONObject json = new JSONObject();
+                    json.putOpt("candidate", RtcCandidates.toJsep(candidate));
+                    Log.d(TAG, "sending candidate: " + json);
+                    peerChannel.send(json);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        rtcSession.setOnLocalDescriptionListener(new RtcSession.OnLocalDescriptionListener() {
+            @Override
+            public void onLocalDescription(SessionDescription localDescription) {
+                try {
+                    JSONObject json = SessionDescriptions.toJsep(localDescription);
+                    Log.d(TAG, "sending sdp: " + json);
+                    peerChannel.send(json);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
         rtcSessions.put(peerChannel.getPeerId(), rtcSession);
 
     }
@@ -355,23 +376,6 @@ public class NativeCallExampleActivity extends Activity implements
         }
     }
 
-    @Override
-    public void onLocalCandidate(final RtcCandidate candidate) {
-        for (int i = 0; i < peerIds.size(); i++) {
-            SignalingChannel.PeerChannel peerChannel = peerChannels.get(peerIds.get(i));
-            if (peerChannel != null) {
-                try {
-                    JSONObject json = new JSONObject();
-                    json.putOpt("candidate", RtcCandidates.toJsep(candidate));
-                    Log.d(TAG, "sending candidate: " + json);
-                    peerChannel.send(json);
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-    }
-
     public void onCallClicked(final View view) {
         Log.d(TAG, "onCallClicked");
         if (callMode == 1 || callMode == 2) {
@@ -409,18 +413,6 @@ public class NativeCallExampleActivity extends Activity implements
                 } catch (InvalidDescriptionException e) {
                     e.printStackTrace();
                 }
-            }
-        }
-    }
-
-    @Override
-    public void onLocalDescription(final SessionDescription localDescription) {
-        for (int i = 0; i < peerIds.size(); i++) {
-            SignalingChannel.PeerChannel peerChannel = peerChannels.get(peerIds.get(i));
-            if (peerChannel != null) {
-                JSONObject json = SessionDescriptions.toJsep(localDescription);
-                Log.d(TAG, "sending sdp: " + json);
-                peerChannel.send(json);
             }
         }
     }
