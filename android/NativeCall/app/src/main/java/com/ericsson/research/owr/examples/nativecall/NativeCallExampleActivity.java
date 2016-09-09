@@ -33,6 +33,7 @@ import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.support.v4.app.ActivityCompat;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.TextureView;
 import android.view.View;
@@ -43,6 +44,8 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -99,6 +102,8 @@ public class NativeCallExampleActivity extends Activity implements
     private CheckBox mBroadCastCheckBox;
     private CheckBox mConferenceCheckBox;
     private EditText mUrlSetting;
+    private LinearLayout vConferenceContainer;
+    private HorizontalScrollView vConferenceContainerScrollView;
     private View mHeader;
     private View mSettingsHeader;
     private int callMode;//0: p2p; 1:broadcast, 2: conference
@@ -110,7 +115,7 @@ public class NativeCallExampleActivity extends Activity implements
     private String activePeerId;
     private Map<String, RtcSession> rtcSessions = new HashMap<>();
     private Map<String, SimpleStreamSet> streamSets = new HashMap<>();
-    //    private SimpleStreamSet mStreamSet;
+    private Map<String, VideoView> videoViewMap = new HashMap<>();
     private VideoView mSelfView;
     private VideoView mRemoteView;
     private RtcConfig mRtcConfig;
@@ -191,6 +196,11 @@ public class NativeCallExampleActivity extends Activity implements
             if (mRemoteView != null)
                 mRemoteView.stop();
         }
+
+        if (running && callMode == 2) {
+            remoteView.setVisibility(View.GONE);
+            vConferenceContainerScrollView.setVisibility(View.VISIBLE);
+        }
     }
 
     public void initUi() {
@@ -203,6 +213,8 @@ public class NativeCallExampleActivity extends Activity implements
         mVideoCheckBox = (CheckBox) findViewById(R.id.video);
         mBroadCastCheckBox = (CheckBox) findViewById(R.id.cbBroadcast);
         mConferenceCheckBox = (CheckBox) findViewById(R.id.cbConference);
+        vConferenceContainerScrollView = (HorizontalScrollView) findViewById(R.id.vConferenceContainerScrollView);
+        vConferenceContainer = (LinearLayout) findViewById(R.id.vConferenceContainer);
 
         mJoinButton.setEnabled(true);
 
@@ -332,13 +344,22 @@ public class NativeCallExampleActivity extends Activity implements
     public void onPeerDisconnect(final SignalingChannel.PeerChannel peerChannel) {
         Log.e(TAG, "onPeerDisconnect => " + peerChannel.getPeerId());
         try {
-            updateVideoView(false);
+            if (peerIds.size() < 2) {
+                updateVideoView(false);
+            }
+            if (callMode == 2) {
+                videoViewMap.get(peerChannel.getPeerId()).stop();
+                videoViewMap.remove(peerChannel.getPeerId());
+            }
 
             rtcSessions.get(peerChannel.getPeerId()).stop();
             streamSets.remove(peerChannel.getPeerId());
             rtcSessions.remove(peerChannel.getPeerId());
             for (int i = 0; i < peerIds.size(); i++) {
                 if (peerIds.get(i).equals(peerChannel.getPeerId())) {
+                    if (callMode == 2) {
+                        vConferenceContainer.removeViewAt(i);
+                    }
                     peerIds.remove(i);
                     break;
                 }
@@ -389,11 +410,17 @@ public class NativeCallExampleActivity extends Activity implements
     }
 
     public void onCallClicked(final View view) {
-        Log.d(TAG, "onCallClicked");
+        Log.e(TAG, "onCallClicked");
         if (callMode == 1 || callMode == 2) {
             for (int i = 0; i < peerIds.size(); i++) {
                 SimpleStreamSet streamSet = streamSets.get(peerIds.get(i));
                 rtcSessions.get(peerIds.get(i)).start(streamSet);
+                if (callMode == 2 && !videoViewMap.containsKey(peerIds.get(i))) {
+                    VideoView videoView = streamSet.createRemoteView();
+                    TextureView textureView = createVideoView();
+                    videoView.setView(textureView);
+                    videoViewMap.put(peerIds.get(i), videoView);
+                }
             }
         } else if (callMode == 0) {
             if (peerIds.indexOf(SignalingChannel.BROADCAST_ID) == -1) {
@@ -420,7 +447,14 @@ public class NativeCallExampleActivity extends Activity implements
         try {
             rtcSession.setRemoteDescription(sessionDescription);
             SimpleStreamSet streamSet = streamSets.get(peerChannel.getPeerId());
-            mRemoteView = streamSet.createRemoteView();
+            if (callMode == 2 && !videoViewMap.containsKey(peerChannel.getPeerId())) {
+                VideoView videoView = streamSet.createRemoteView();
+                TextureView textureView = createVideoView();
+                videoView.setView(textureView);
+                videoViewMap.put(peerChannel.getPeerId(), videoView);
+            } else {
+                mRemoteView = streamSet.createRemoteView();
+            }
             rtcSession.start(streamSet);
             updateVideoView(true);
         } catch (InvalidDescriptionException e) {
@@ -439,6 +473,16 @@ public class NativeCallExampleActivity extends Activity implements
         }
     }
 
+    private TextureView createVideoView() {
+        TextureView textureView = new TextureView(getApplicationContext());
+        textureView.setId(textureView.hashCode());
+        int size = (int) (240 * Utils.getDensity(getApplicationContext()));
+        textureView.setLayoutParams(new LinearLayout.LayoutParams(size, size, Gravity.CENTER));
+        vConferenceContainer.addView(textureView);
+        return textureView;
+    }
+
+
     @Override
     public void onDisconnect() {
         Toast.makeText(this, "Disconnected from server", Toast.LENGTH_LONG).show();
@@ -447,7 +491,10 @@ public class NativeCallExampleActivity extends Activity implements
 
             for (int i = 0; i < peerIds.size(); i++) {
                 rtcSessions.get(peerIds.get(i)).stop();
+                videoViewMap.get(peerIds.get(i)).stop();
             }
+            vConferenceContainer.removeAllViews();
+            videoViewMap.clear();
             streamSets.clear();
             rtcSessions.clear();
             peerChannels.clear();

@@ -56,4 +56,16 @@ public class Utils {
             Log.e(TAG, "Was not able to restart application");
         }
     }
+
+    /**
+     * Get density of screen from context
+     *
+     * @param context
+     * @return float
+     */
+    public static float getDensity(Context context) {
+        return context.getResources().getDisplayMetrics().density;
+    }
+
+
 }

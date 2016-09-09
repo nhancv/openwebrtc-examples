@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent"
-              android:layout_height="match_parent"
-              android:gravity="bottom"
-              android:orientation="vertical"
-              android:weightSum="2">
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="bottom"
+    android:orientation="vertical"
+    android:weightSum="2">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -19,23 +19,42 @@
             android:layout_width="128dp"
             android:layout_height="96dp"
             android:onClick="onSelfViewClicked"
-            android:visibility="invisible"/>
+            android:visibility="invisible" />
 
         <View
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_weight="0.1"/>
+            android:layout_weight="0.1" />
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="0.1"/>
+        android:layout_weight="0.1" />
 
     <TextureView
         android:id="@+id/remote_view"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:visibility="invisible"/>
+        android:visibility="invisible" />
+
+    <HorizontalScrollView
+        android:id="@+id/vConferenceContainerScrollView"
+        android:layout_width="match_parent"
+        android:layout_height="240dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/vConferenceContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:background="@android:color/black"
+            android:orientation="horizontal">
+
+        </LinearLayout>
+
+    </HorizontalScrollView>
+
+
 </LinearLayout>
