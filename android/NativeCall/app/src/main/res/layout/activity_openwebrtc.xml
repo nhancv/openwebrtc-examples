@@ -123,6 +123,15 @@
                 android:onClick="onCallClicked"
                 android:text="Call"
                 android:textColor="@color/default_text" />
+
+            <Button
+                android:id="@+id/restart"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-light"
+                android:onClick="onRestartClicked"
+                android:text="Restart"
+                android:textColor="@color/default_text" />
         </LinearLayout>
 
         <CheckBox

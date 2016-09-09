@@ -232,14 +232,14 @@ public class NativeCallExampleActivity extends Activity implements
     }
 
     public void onSelfViewClicked(final View view) {
-        Log.d(TAG, "onSelfViewClicked");
+        Log.e(TAG, "onSelfViewClicked");
         if (mSelfView != null) {
             mSelfView.setRotation((mSelfView.getRotation() + 1) % 4);
         }
     }
 
     public void onJoinClicked(final View view) {
-        Log.d(TAG, "onJoinClicked");
+        Log.e(TAG, "onJoinClicked");
 
         //Set up call mode
         callMode = 0;
@@ -261,6 +261,8 @@ public class NativeCallExampleActivity extends Activity implements
         mJoinButton.setEnabled(false);
         mAudioCheckBox.setEnabled(false);
         mVideoCheckBox.setEnabled(false);
+        mBroadCastCheckBox.setEnabled(false);
+        mConferenceCheckBox.setEnabled(false);
 
         mSignalingChannel = new SignalingChannel(NativeCallExampleActivity.this, getUrl(), sessionId, callMode);
         mSignalingChannel.setJoinListener(this);
@@ -278,8 +280,7 @@ public class NativeCallExampleActivity extends Activity implements
 
     @Override
     public void onPeerJoin(final SignalingChannel.PeerChannel peerChannel) {
-        Log.v(TAG, "onPeerJoin => " + peerChannel.getPeerId());
-        mCallButton.setEnabled(true);
+        Log.e(TAG, "onPeerJoin => " + peerChannel.getPeerId());
 
         peerChannel.setDisconnectListener(this);
         peerChannel.setMessageListener(this);
@@ -321,28 +322,39 @@ public class NativeCallExampleActivity extends Activity implements
         SimpleStreamSet streamSet = SimpleStreamSet.defaultConfig(sendAudio, sendVideo, revcAudio, revcVideo);
         streamSets.put(peerChannel.getPeerId(), streamSet);
 
+        //Update call button
+        if ((peerIds.indexOf(SignalingChannel.BROADCAST_ID) != -1 && callMode == 1) || peerIds.indexOf(SignalingChannel.BROADCAST_ID) == -1) {
+            mCallButton.setEnabled(true);
+        }
     }
 
     @Override
     public void onPeerDisconnect(final SignalingChannel.PeerChannel peerChannel) {
-        Log.d(TAG, "onPeerDisconnect => " + peerChannel.getPeerId());
-        rtcSessions.get(peerChannel.getPeerId()).stop();
-        rtcSessions.remove(peerChannel.getPeerId());
-        streamSets.remove(peerChannel.getPeerId());
-        for (int i = 0; i < peerIds.size(); i++) {
-            if (peerIds.get(i).equals(peerChannel.getPeerId())) {
-                peerIds.remove(i);
-                break;
-            }
-        }
-        peerChannels.remove(peerChannel.getPeerId());
+        Log.e(TAG, "onPeerDisconnect => " + peerChannel.getPeerId());
+        try {
+            updateVideoView(false);
 
-        updateVideoView(false);
-        mSessionInput.setEnabled(true);
-        mJoinButton.setEnabled(true);
-        mCallButton.setEnabled(false);
-        mAudioCheckBox.setEnabled(true);
-        mVideoCheckBox.setEnabled(true);
+            rtcSessions.get(peerChannel.getPeerId()).stop();
+            streamSets.remove(peerChannel.getPeerId());
+            rtcSessions.remove(peerChannel.getPeerId());
+            for (int i = 0; i < peerIds.size(); i++) {
+                if (peerIds.get(i).equals(peerChannel.getPeerId())) {
+                    peerIds.remove(i);
+                    break;
+                }
+            }
+            peerChannels.remove(peerChannel.getPeerId());
+
+            mSessionInput.setEnabled(true);
+            mJoinButton.setEnabled(true);
+            mCallButton.setEnabled(false);
+            mAudioCheckBox.setEnabled(true);
+            mVideoCheckBox.setEnabled(true);
+            mBroadCastCheckBox.setEnabled(true);
+            mConferenceCheckBox.setEnabled(true);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -398,6 +410,11 @@ public class NativeCallExampleActivity extends Activity implements
         updateVideoView(true);
     }
 
+    public void onRestartClicked(final View view) {
+        Log.d(TAG, "onRestartClicked");
+        Utils.restartApplication(getApplicationContext());
+    }
+
     private void onInboundCall(final SignalingChannel.PeerChannel peerChannel, final SessionDescription sessionDescription) {
         RtcSession rtcSession = rtcSessions.get(peerChannel.getPeerId());
         try {
@@ -425,19 +442,20 @@ public class NativeCallExampleActivity extends Activity implements
     @Override
     public void onDisconnect() {
         Toast.makeText(this, "Disconnected from server", Toast.LENGTH_LONG).show();
-        updateVideoView(false);
+        try {
+            updateVideoView(false);
 
-        for (int i = 0; i < peerIds.size(); i++) {
-            RtcSession rtcSession = rtcSessions.get(peerIds.get(i));
-            if (rtcSession != null) {
-                rtcSession.stop();
+            for (int i = 0; i < peerIds.size(); i++) {
+                rtcSessions.get(peerIds.get(i)).stop();
             }
+            streamSets.clear();
+            rtcSessions.clear();
+            peerChannels.clear();
+            peerIds.clear();
+            mSignalingChannel = null;
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-        peerChannels.clear();
-        rtcSessions.clear();
-        streamSets.clear();
-        peerIds.clear();
-        mSignalingChannel = null;
     }
 
     @Override
