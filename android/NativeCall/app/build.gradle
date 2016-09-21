@@ -25,7 +25,5 @@ android {
 
 dependencies {
     compile 'com.android.support:support-v4:23.1.1'
-//    See settings.gradle for local dev instructions
-    compile project(':openwebrtc-sdk')
-//    compile 'io.openwebrtc:openwebrtc-android-sdk:0.1.0'
+    compile 'com.github.nhancv:ot-openwebrtc-android-sdk:v1.0'
 }
